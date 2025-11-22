@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SheetDB Eco Store</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        brand: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom Styles & Animations */
+        body { -webkit-tap-highlight-color: transparent; }
+        
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0ea5e9;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Toast Notification */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 50;
+        }
+        .toast {
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            margin-top: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+        }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { border-left: 4px solid #22c55e; }
+        .toast.error { border-left: 4px solid #ef4444; }
+
+        /* Modal Overlay */
+        .modal-overlay {
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(2px);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Navbar -->
+    <nav class="bg-white shadow-sm z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center cursor-pointer" onclick="app.navigate('home')">
+                    <i class="fa-solid fa-store text-brand-600 text-2xl mr-2"></i>
+                    <span class="font-bold text-xl tracking-tight text-gray-900">Sheet<span class="text-brand-600">Store</span></span>
+                </div>
+                
+                <div class="flex items-center gap-4">
+                    <!-- Nav Links -->
+                    <button onclick="app.navigate('home')" class="p-2 text-gray-500 hover:text-brand-600 hidden sm:block">Shop</button>
+                    
+                    <button onclick="app.navigate('orders')" id="nav-orders" class="p-2 text-gray-500 hover:text-brand-600 hidden">
+                        Orders
+                    </button>
+
+                    <button onclick="app.navigate('cart')" class="relative p-2 text-gray-500 hover:text-brand-600">
+                        <i class="fa-solid fa-shopping-cart text-xl"></i>
+                        <span id="cart-count" class="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/4 -translate-y-1/4 bg-red-500 rounded-full hidden">0</span>
+                    </button>
+
+                    <button id="auth-btn" onclick="app.navigate('login')" class="ml-2 px-4 py-2 text-sm font-medium text-white bg-brand-600 rounded-md hover:bg-brand-700 focus:outline-none">
+                        Login
+                    </button>
+                    <button id="logout-btn" onclick="app.logout()" class="ml-2 hidden text-gray-500 hover:text-red-500">
+                        <i class="fa-solid fa-sign-out-alt"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main id="app-container" class="flex-1 overflow-y-auto p-4 relative">
+        
+        <!-- Loading Spinner -->
+        <div id="loading" class="hidden absolute inset-0 bg-white bg-opacity-80 z-40 flex flex-col items-center justify-center">
+            <div class="loader mb-4"></div>
+            <p class="text-gray-500 animate-pulse">Syncing with Cloud Sheets...</p>
+        </div>
+
+        <!-- VIEW: Login / Signup -->
+        <div id="view-login" class="hidden max-w-md mx-auto mt-10 fade-in">
+            <div class="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
+                <h2 id="auth-title" class="text-2xl font-bold mb-6 text-center">Welcome Back</h2>
+                
+                <!-- Toggle -->
+                <div class="flex bg-gray-100 rounded-lg p-1 mb-6">
+                    <button onclick="auth.toggleMode('login')" id="tab-login" class="flex-1 py-2 text-sm font-medium rounded-md bg-white shadow-sm text-gray-900 transition">Login</button>
+                    <button onclick="auth.toggleMode('signup')" id="tab-signup" class="flex-1 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-900 transition">Sign Up</button>
+                </div>
+
+                <form id="auth-form" onsubmit="auth.handleSubmit(event)">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Account Name (Username)</label>
+                            <input type="text" id="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Password</label>
+                            <input type="password" id="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500">
+                        </div>
+                        <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500">
+                            Continue
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VIEW: Product Grid (Home) -->
+        <div id="view-home" class="hidden max-w-7xl mx-auto fade-in">
+            <!-- Search & Filter -->
+            <div class="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4">
+                <div class="relative w-full sm:w-96">
+                    <input type="text" id="search-input" placeholder="Search products..." oninput="products.filter()" class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-brand-500">
+                    <i class="fa-solid fa-search absolute left-3 top-3 text-gray-400"></i>
+                </div>
+                <select id="category-filter" onchange="products.filter()" class="w-full sm:w-auto px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-brand-500">
+                    <option value="all">All Categories</option>
+                    <!-- Categories injected by JS -->
+                </select>
+            </div>
+
+            <!-- Grid -->
+            <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- Products injected by JS -->
+            </div>
+        </div>
+
+        <!-- VIEW: Cart -->
+        <div id="view-cart" class="hidden max-w-4xl mx-auto fade-in">
+            <h2 class="text-2xl font-bold mb-6">Shopping Cart</h2>
+            <div id="cart-items-container" class="bg-white rounded-lg shadow overflow-hidden mb-6">
+                <!-- Cart Items -->
+            </div>
+            
+            <div id="cart-summary" class="bg-white p-6 rounded-lg shadow hidden">
+                <div class="flex justify-between items-center text-xl font-bold mb-4">
+                    <span>Total:</span>
+                    <span id="cart-total">$0.00</span>
+                </div>
+                <button onclick="app.navigate('checkout')" class="w-full py-3 bg-brand-600 text-white rounded-lg hover:bg-brand-700 font-bold">Proceed to Checkout</button>
+            </div>
+             <div id="empty-cart-msg" class="text-center py-10 text-gray-500">
+                <i class="fa-solid fa-basket-shopping text-6xl mb-4 text-gray-300"></i>
+                <p>Your cart is empty.</p>
+                <button onclick="app.navigate('home')" class="mt-4 text-brand-600 hover:underline">Start Shopping</button>
+            </div>
+        </div>
+
+        <!-- VIEW: Checkout -->
+        <div id="view-checkout" class="hidden max-w-2xl mx-auto fade-in">
+            <button onclick="app.navigate('cart')" class="mb-4 text-gray-500 hover:text-gray-900"><i class="fa-solid fa-arrow-left"></i> Back to Cart</button>
+            <div class="bg-white p-8 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-bold mb-6">Checkout Details</h2>
+                <form onsubmit="orders.placeOrder(event)">
+                    <div class="grid grid-cols-1 gap-6">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700">Full Delivery Address</label>
+                            <textarea id="address" required rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2"></textarea>
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Pin Code</label>
+                                <input type="text" id="pincode" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Mobile Number</label>
+                                <input type="tel" id="mobile" required class="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2">
+                            </div>
+                        </div>
+                        
+                        <div class="bg-gray-50 p-4 rounded text-sm text-gray-600">
+                            <p><strong>Payment Method:</strong> Cash on Delivery (Standard)</p>
+                            <p class="mt-1">Estimated Delivery: 5 Days</p>
+                        </div>
+
+                        <button type="submit" class="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold">
+                            Place Order
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- VIEW: Order History -->
+        <div id="view-orders" class="hidden max-w-4xl mx-auto fade-in">
+            <h2 class="text-2xl font-bold mb-6">My Orders</h2>
+            <div id="orders-list" class="space-y-4">
+                <!-- Orders injected JS -->
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Review Modal -->
+    <div id="review-modal" class="fixed inset-0 z-50 hidden modal-overlay flex items-center justify-center p-4">
+        <div class="bg-white rounded-lg max-w-md w-full p-6 shadow-2xl transform scale-100 transition-transform">
+            <h3 class="text-lg font-bold mb-2">Write a Review</h3>
+            <p class="text-sm text-gray-500 mb-4">How was your product?</p>
+            <div class="flex justify-center gap-2 mb-4 text-2xl text-yellow-400">
+                <i class="fa-solid fa-star cursor-pointer hover:text-yellow-500" onclick="reviews.setRating(1)"></i>
+                <i class="fa-solid fa-star cursor-pointer hover:text-yellow-500" onclick="reviews.setRating(2)"></i>
+                <i class="fa-solid fa-star cursor-pointer hover:text-yellow-500" onclick="reviews.setRating(3)"></i>
+                <i class="fa-solid fa-star cursor-pointer hover:text-yellow-500" onclick="reviews.setRating(4)"></i>
+                <i class="fa-solid fa-star cursor-pointer hover:text-yellow-500" onclick="reviews.setRating(5)"></i>
+            </div>
+            <textarea id="review-text" rows="3" class="w-full border p-2 rounded mb-4" placeholder="Your experience..."></textarea>
+            <div class="flex justify-end gap-2">
+                <button onclick="reviews.close()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded">Cancel</button>
+                <button onclick="reviews.submit()" class="px-4 py-2 bg-brand-600 text-white rounded hover:bg-brand-700">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Application Logic -->
+    <script>
+        // --- CONFIGURATION ---
+        const CONFIG = {
+            // Write Operations (Costly, use for POST only)
+            api: {
+                accounts: "https://sheetdb.io/api/v1/nchnwk8mt4up8",
+                orders: "https://sheetdb.io/api/v1/tkceueamttrls",
+                products: "https://sheetdb.io/api/v1/wrata6flobfuc"
+            },
+            // Read Operations (Free - Google Sheets Direct Export)
+            csv: {
+                // IDs extracted from your provided links
+                accounts: "https://docs.google.com/spreadsheets/d/1YgK67iXT7OY-WDhMZfjVRbM5rLkd1c1-eJZ4-HCPpWA/export?format=csv",
+                orders: "https://docs.google.com/spreadsheets/d/1kJn6N9PhSYrei-G_-nC1E7zpHQdW1P96x4UhNtyPY1Y/export?format=csv",
+                products: "https://docs.google.com/spreadsheets/d/1dP9DLbsGQIkJa0csExeckAUVxr2Vz4K0ZC54C5N2j1w/export?format=csv"
+            }
+        };
+
+        // --- STATE MANAGEMENT ---
+        const state = {
+            user: JSON.parse(localStorage.getItem('user')) || null,
+            products: [],
+            cart: JSON.parse(localStorage.getItem('cart')) || [],
+            orders: [],
+            currentView: 'home',
+            tempReviewOrder: null,
+            tempRating: 5
+        };
+
+        // --- UTILS ---
+        const utils = {
+            formatCurrency: (num) => `$${parseFloat(num).toFixed(2)}`,
+            
+            showToast: (msg, type = 'success') => {
+                const container = document.getElementById('toast-container');
+                const el = document.createElement('div');
+                el.className = `toast ${type}`;
+                el.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> <span>${msg}</span>`;
+                container.appendChild(el);
+                
+                setTimeout(() => el.classList.add('show'), 10);
+                setTimeout(() => {
+                    el.classList.remove('show');
+                    setTimeout(() => el.remove(), 300);
+                }, 3000);
+            },
+
+            setLoading: (isLoading) => {
+                const el = document.getElementById('loading');
+                if(isLoading) el.classList.remove('hidden');
+                else el.classList.add('hidden');
+            },
+
+            handleImageError: (el) => {
+                el.removeAttribute('onerror'); 
+                if (el.parentElement) {
+                    el.parentElement.innerHTML = `
+                        <div class="flex items-center justify-center h-full w-full bg-gray-200 text-gray-500 text-sm font-bold flex-col absolute inset-0">
+                            <i class="fa-solid fa-image-slash text-2xl mb-2"></i>
+                            <span>No Image Found</span>
+                        </div>
+                    `;
+                }
+            },
+
+            getImage: (product) => {
+                return product['product image'] || '';
+            },
+
+            cleanPrice: (priceStr) => {
+                return parseFloat(String(priceStr).replace('$', ''));
+            },
+
+            getDateString: () => {
+                const d = new Date();
+                return d.toISOString();
+            },
+
+            getDeliveryDate: () => {
+                const d = new Date();
+                d.setDate(d.getDate() + 5);
+                return d.toISOString().split('T')[0];
+            },
+
+            // --- CSV PARSING ENGINE ---
+            // Fetches and parses CSV data into an array of Objects (like JSON)
+            fetchCSV: async (url) => {
+                const res = await fetch(url);
+                const text = await res.text();
+                return utils.csvToJson(text);
+            },
+
+            csvToJson: (str) => {
+                const arr = [];
+                let quote = false;  
+                let col = 0, row = 0;
+
+                for (let c = 0; c < str.length; c++) {
+                    let cc = str[c], nc = str[c+1];        
+                    arr[row] = arr[row] || [];             
+                    arr[row][col] = arr[row][col] || '';   
+
+                    if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
+                    if (cc == '"') { quote = !quote; continue; }
+                    if (cc == ',' && !quote) { ++col; continue; }
+                    if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
+                    if (cc == '\n' && !quote) { ++row; col = 0; continue; }
+                    if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+
+                    arr[row][col] += cc;
+                }
+                
+                const headers = arr[0].map(h => h.trim());
+                return arr.slice(1).map(row => {
+                    if(row.length < headers.length) return null; 
+                    let obj = {};
+                    headers.forEach((h, i) => {
+                        obj[h] = row[i] ? row[i].trim() : '';
+                    });
+                    return obj;
+                }).filter(o => o !== null);
+            }
+        };
+
+        // --- AUTHENTICATION SERVICE ---
+        const auth = {
+            mode: 'login',
+
+            init: () => {
+                if(state.user) {
+                    document.getElementById('auth-btn').classList.add('hidden');
+                    document.getElementById('logout-btn').classList.remove('hidden');
+                    document.getElementById('nav-orders').classList.remove('hidden');
+                } else {
+                    document.getElementById('auth-btn').classList.remove('hidden');
+                    document.getElementById('logout-btn').classList.add('hidden');
+                    document.getElementById('nav-orders').classList.add('hidden');
+                }
+            },
+
+            toggleMode: (mode) => {
+                auth.mode = mode;
+                document.getElementById('auth-title').innerText = mode === 'login' ? 'Welcome Back' : 'Create Account';
+                document.getElementById('tab-login').className = mode === 'login' ? 'flex-1 py-2 text-sm font-medium rounded-md bg-white shadow-sm text-gray-900 transition' : 'flex-1 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-900 transition';
+                document.getElementById('tab-signup').className = mode === 'signup' ? 'flex-1 py-2 text-sm font-medium rounded-md bg-white shadow-sm text-gray-900 transition' : 'flex-1 py-2 text-sm font-medium rounded-md text-gray-500 hover:text-gray-900 transition';
+            },
+
+            handleSubmit: async (e) => {
+                e.preventDefault();
+                const name = document.getElementById('username').value.trim();
+                const pass = document.getElementById('password').value.trim();
+
+                if(!name || !pass) return utils.showToast('Please fill all fields', 'error');
+
+                utils.setLoading(true);
+
+                try {
+                    if(auth.mode === 'login') {
+                        // HYBRID: Use CSV for reading accounts (FREE)
+                        const allAccounts = await utils.fetchCSV(CONFIG.csv.accounts);
+                        
+                        // Client-side filtering
+                        const foundUser = allAccounts.find(u => u["account name"] === name && u["password"] === pass);
+                        
+                        if(foundUser) {
+                            state.user = foundUser;
+                            localStorage.setItem('user', JSON.stringify(state.user));
+                            utils.showToast(`Welcome back, ${name}!`);
+                            auth.init();
+                            app.navigate('home');
+                        } else {
+                            utils.showToast('Invalid credentials', 'error');
+                        }
+                    } else {
+                        // Signup Flow
+                        
+                        // 1. Check existence using CSV (FREE)
+                        const allAccounts = await utils.fetchCSV(CONFIG.csv.accounts);
+                        const exists = allAccounts.some(u => u["account name"] === name);
+
+                        if(exists) {
+                            utils.showToast('Username already taken', 'error');
+                        } else {
+                            // 2. Create using API (PAID/LIMITED)
+                            const payload = { "account name": name, "password": pass };
+                            await fetch(CONFIG.api.accounts, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ data: payload })
+                            });
+                            state.user = payload;
+                            localStorage.setItem('user', JSON.stringify(state.user));
+                            utils.showToast('Account created successfully!');
+                            auth.init();
+                            app.navigate('home');
+                        }
+                    }
+                } catch (err) {
+                    console.error(err);
+                    utils.showToast('Connection error. Check console.', 'error');
+                } finally {
+                    utils.setLoading(false);
+                }
+            }
+        };
+
+        // --- PRODUCT SERVICE ---
+        const products = {
+            fetchAll: async () => {
+                utils.setLoading(true);
+                try {
+                    // HYBRID: Fetch Products via CSV (FREE)
+                    const data = await utils.fetchCSV(CONFIG.csv.products);
+                    
+                    state.products = data.map((item, index) => ({...item, _id: index}));
+                    products.render(state.products);
+                    
+                    const categories = [...new Set(data.map(p => p.category))];
+                    const select = document.getElementById('category-filter');
+                    
+                    // Clear existing options except first
+                    select.innerHTML = '<option value="all">All Categories</option>';
+                    
+                    categories.forEach(c => {
+                        if(c) {
+                            const opt = document.createElement('option');
+                            opt.value = c;
+                            opt.innerText = c;
+                            select.appendChild(opt);
+                        }
+                    });
+
+                } catch (err) {
+                    console.error(err);
+                    utils.showToast('Failed to load products', 'error');
+                } finally {
+                    utils.setLoading(false);
+                }
+            },
+
+            render: (list) => {
+                const container = document.getElementById('product-grid');
+                container.innerHTML = '';
+                list.forEach(p => {
+                    const price = utils.cleanPrice(p.price);
+                    
+                    const html = `
+                        <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition overflow-hidden border border-gray-100 flex flex-col h-full">
+                            <div class="h-48 overflow-hidden bg-gray-100 relative">
+                                <img src="${utils.getImage(p)}" onerror="utils.handleImageError(this)" alt="${p['product name']}" class="w-full h-full object-cover transform hover:scale-105 transition duration-500">
+                            </div>
+                            <div class="p-4 flex-1 flex flex-col">
+                                <div class="text-xs text-brand-600 font-bold uppercase tracking-wider mb-1">${p.category}</div>
+                                <h3 class="font-bold text-gray-900 mb-1 leading-tight">${p['product name']}</h3>
+                                <p class="text-sm text-gray-500 line-clamp-2 mb-4 flex-1">${p['product description']}</p>
+                                <div class="flex items-center justify-between mt-auto">
+                                    <span class="text-lg font-bold text-gray-900">${utils.formatCurrency(price)}</span>
+                                    <button onclick="cart.add(${p._id})" class="bg-gray-900 text-white px-3 py-2 rounded-lg text-sm hover:bg-gray-800 transition">
+                                        Add <i class="fa-solid fa-plus ml-1"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += html;
+                });
+            },
+
+            filter: () => {
+                const term = document.getElementById('search-input').value.toLowerCase();
+                const cat = document.getElementById('category-filter').value;
+                
+                const filtered = state.products.filter(p => {
+                    const matchesSearch = p['product name'].toLowerCase().includes(term) || p['product description'].toLowerCase().includes(term);
+                    const matchesCat = cat === 'all' || p.category === cat;
+                    return matchesSearch && matchesCat;
+                });
+                products.render(filtered);
+            }
+        };
+
+        // --- CART SERVICE ---
+        const cart = {
+            add: (productId) => {
+                const product = state.products.find(p => p._id === productId);
+                if (!product) return;
+
+                const existing = state.cart.find(item => item['product name'] === product['product name']);
+                if(existing) {
+                    existing.qty++;
+                } else {
+                    state.cart.push({...product, qty: 1});
+                }
+                cart.save();
+                utils.showToast('Added to cart');
+            },
+
+            remove: (name) => {
+                state.cart = state.cart.filter(item => item['product name'] !== name);
+                cart.save();
+                cart.render();
+            },
+
+            changeQty: (name, delta) => {
+                const item = state.cart.find(i => i['product name'] === name);
+                if(item) {
+                    item.qty += delta;
+                    if(item.qty < 1) item.qty = 1;
+                    cart.save();
+                    cart.render();
+                }
+            },
+
+            save: () => {
+                localStorage.setItem('cart', JSON.stringify(state.cart));
+                cart.updateCount();
+            },
+
+            updateCount: () => {
+                const count = state.cart.reduce((acc, item) => acc + item.qty, 0);
+                const el = document.getElementById('cart-count');
+                el.innerText = count;
+                if(count > 0) el.classList.remove('hidden');
+                else el.classList.add('hidden');
+            },
+
+            render: () => {
+                const container = document.getElementById('cart-items-container');
+                const summary = document.getElementById('cart-summary');
+                const empty = document.getElementById('empty-cart-msg');
+                const totalEl = document.getElementById('cart-total');
+
+                if(state.cart.length === 0) {
+                    container.innerHTML = '';
+                    summary.classList.add('hidden');
+                    empty.classList.remove('hidden');
+                    return;
+                }
+
+                empty.classList.add('hidden');
+                summary.classList.remove('hidden');
+                container.innerHTML = '';
+
+                let total = 0;
+                
+                state.cart.forEach(item => {
+                    const price = utils.cleanPrice(item.price);
+                    total += price * item.qty;
+                    
+                    container.innerHTML += `
+                        <div class="flex flex-col sm:flex-row items-center border-b p-4 gap-4">
+                            <div class="w-16 h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0 relative">
+                                <img src="${utils.getImage(item)}" onerror="utils.handleImageError(this)" class="w-full h-full object-cover">
+                            </div>
+                            <div class="flex-1 text-center sm:text-left">
+                                <h4 class="font-bold text-gray-900">${item['product name']}</h4>
+                                <p class="text-sm text-gray-500">${utils.formatCurrency(price)}</p>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <button onclick="cart.changeQty('${item['product name']}', -1)" class="w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">-</button>
+                                <span class="w-8 text-center font-bold">${item.qty}</span>
+                                <button onclick="cart.changeQty('${item['product name']}', 1)" class="w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200">+</button>
+                            </div>
+                            <div class="font-bold text-gray-800 w-24 text-right">
+                                ${utils.formatCurrency(price * item.qty)}
+                            </div>
+                            <button onclick="cart.remove('${item['product name']}')" class="text-red-500 hover:bg-red-50 p-2 rounded">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    `;
+                });
+
+                totalEl.innerText = utils.formatCurrency(total);
+            }
+        };
+
+        // --- ORDER SERVICE ---
+        const orders = {
+            placeOrder: async (e) => {
+                e.preventDefault();
+                if(!state.user) return utils.showToast('Please login to checkout', 'error');
+
+                const address = document.getElementById('address').value;
+                const pincode = document.getElementById('pincode').value;
+                const mobile = document.getElementById('mobile').value;
+
+                const productsStr = state.cart.map(i => `${i['product name']} (x${i.qty})`).join(', ');
+                const totalPrice = state.cart.reduce((acc, i) => acc + (utils.cleanPrice(i.price) * i.qty), 0);
+
+                const orderData = {
+                    "account name": state.user["account name"],
+                    "password": state.user.password, 
+                    "orders dates": new Date().toISOString(), 
+                    "estimated delevery date": utils.getDeliveryDate(),
+                    "products": productsStr,
+                    "complete price": `$${totalPrice.toFixed(2)}`,
+                    "delevery status": "Pending",
+                    "adresss": address, 
+                    "pin code": pincode,
+                    "mobile number(for delevery)": mobile
+                };
+
+                utils.setLoading(true);
+
+                try {
+                    // API (PAID/LIMITED) - Necessary for writes
+                    await fetch(CONFIG.api.orders, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ data: orderData })
+                    });
+                    
+                    state.cart = [];
+                    cart.save();
+                    utils.showToast('Order placed successfully!');
+                    app.navigate('orders');
+                } catch(err) {
+                    utils.showToast('Failed to place order', 'error');
+                } finally {
+                    utils.setLoading(false);
+                }
+            },
+
+            fetchHistory: async () => {
+                if(!state.user) return;
+                utils.setLoading(true);
+                try {
+                    // HYBRID: Use CSV for Order History (FREE)
+                    const allOrders = await utils.fetchCSV(CONFIG.csv.orders);
+                    
+                    // Client-side filtering by account name
+                    state.orders = allOrders.filter(o => o["account name"] === state.user["account name"]).reverse();
+                    
+                    orders.render();
+                } catch(err) {
+                    console.error(err);
+                    utils.showToast('Failed to fetch orders', 'error');
+                } finally {
+                    utils.setLoading(false);
+                }
+            },
+
+            render: () => {
+                const container = document.getElementById('orders-list');
+                container.innerHTML = '';
+                
+                if(state.orders.length === 0) {
+                    container.innerHTML = '<p class="text-center text-gray-500 py-10">No orders found.</p>';
+                    return;
+                }
+
+                state.orders.forEach(o => {
+                    const status = o["delevery status"];
+                    const isPending = status === 'Pending';
+                    const isDelivered = status === 'Delivered';
+                    
+                    let statusColor = 'bg-gray-100 text-gray-800';
+                    if(isPending) statusColor = 'bg-yellow-100 text-yellow-800';
+                    if(status === 'Shipped') statusColor = 'bg-blue-100 text-blue-800';
+                    if(isDelivered) statusColor = 'bg-green-100 text-green-800';
+                    if(status === 'Cancelled') statusColor = 'bg-red-100 text-red-800';
+
+                    const dateObj = new Date(o["orders dates"]);
+                    const date = !isNaN(dateObj) ? dateObj.toLocaleDateString() : o["orders dates"];
+
+                    container.innerHTML += `
+                        <div class="bg-white rounded-lg shadow border border-gray-100 overflow-hidden transition hover:shadow-md">
+                            <div class="p-6">
+                                <!-- Header -->
+                                <div class="flex flex-col md:flex-row justify-between md:items-start mb-4 border-b border-gray-100 pb-4">
+                                    <div>
+                                        <div class="text-xs text-gray-500 uppercase font-bold tracking-wider">Order Placed</div>
+                                        <div class="text-gray-900">${date}</div>
+                                    </div>
+                                    <div class="mt-2 md:mt-0 text-right">
+                                        <div class="text-xs text-gray-500 uppercase font-bold tracking-wider">Total</div>
+                                        <div class="font-bold text-lg text-gray-900">${o["complete price"]}</div>
+                                    </div>
+                                </div>
+
+                                <!-- Main Details -->
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
+                                    <div>
+                                        <h4 class="font-bold text-gray-900 mb-2">Items</h4>
+                                        <p class="text-gray-700 text-sm leading-relaxed">${o.products}</p>
+                                    </div>
+                                    <div class="bg-gray-50 p-4 rounded-lg text-sm">
+                                        <h4 class="font-bold text-gray-900 mb-2">Delivery Details</h4>
+                                        <p><span class="text-gray-500">Address:</span> ${o.adresss || 'N/A'}</p>
+                                        <p><span class="text-gray-500">Pin:</span> ${o["pin code"] || 'N/A'}</p>
+                                        <p><span class="text-gray-500">Mobile:</span> ${o["mobile number(for delevery)"] || 'N/A'}</p>
+                                        <p class="mt-2"><span class="text-gray-500">Est. Delivery:</span> ${o["estimated delevery date"] || 'N/A'}</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Footer / Status -->
+                                <div class="flex items-center justify-between pt-2">
+                                    <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${statusColor}">${status}</span>
+                                    
+                                    ${isDelivered ? `
+                                        <button onclick="reviews.open()" class="text-sm text-brand-600 hover:text-brand-800 font-semibold border border-brand-200 px-4 py-2 rounded hover:bg-brand-50">
+                                            Write Review
+                                        </button>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+        };
+
+        // --- REVIEWS SERVICE ---
+        const reviews = {
+            open: () => {
+                document.getElementById('review-modal').classList.remove('hidden');
+            },
+            close: () => {
+                document.getElementById('review-modal').classList.add('hidden');
+                document.getElementById('review-text').value = '';
+            },
+            setRating: (n) => {
+                state.tempRating = n;
+                const stars = document.querySelectorAll('#review-modal .fa-star');
+                stars.forEach((s, idx) => {
+                    if(idx < n) s.classList.add('text-yellow-500');
+                    else s.classList.remove('text-yellow-500');
+                });
+            },
+            submit: () => {
+                utils.showToast('Review submitted! Thank you.');
+                reviews.close();
+            }
+        };
+
+        // --- APP CONTROLLER ---
+        const app = {
+            init: () => {
+                cart.updateCount();
+                auth.init();
+                products.fetchAll();
+                
+                if(state.user) {
+                    orders.fetchHistory();
+                }
+
+                app.navigate('home');
+            },
+
+            navigate: (viewId) => {
+                if((viewId === 'checkout' || viewId === 'orders') && !state.user) {
+                    utils.showToast('Please login first', 'error');
+                    app.navigate('login');
+                    return;
+                }
+
+                state.currentView = viewId;
+                
+                ['view-home', 'view-login', 'view-cart', 'view-checkout', 'view-orders'].forEach(id => {
+                    document.getElementById(id).classList.add('hidden');
+                });
+
+                document.getElementById(`view-${viewId}`).classList.remove('hidden');
+
+                if(viewId === 'cart') cart.render();
+                if(viewId === 'orders') orders.fetchHistory();
+            },
+
+            logout: () => {
+                state.user = null;
+                localStorage.removeItem('user');
+                utils.showToast('Logged out');
+                auth.init();
+                app.navigate('home');
+            }
+        };
+
+        window.addEventListener('DOMContentLoaded', app.init);
+
+    </script>
+</body>
+</html>
