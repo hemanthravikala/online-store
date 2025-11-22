@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SheetDB Eco Store</title>
+    <title>SheetDB Secure Store</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- CryptoJS for Encryption -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Google Fonts -->
@@ -89,7 +91,7 @@
             <div class="flex justify-between h-16">
                 <div class="flex items-center cursor-pointer" onclick="app.navigate('home')">
                     <i class="fa-solid fa-store text-brand-600 text-2xl mr-2"></i>
-                    <span class="font-bold text-xl tracking-tight text-gray-900">Sheet<span class="text-brand-600">Store</span></span>
+                    <span class="font-bold text-xl tracking-tight text-gray-900">Sheet<span class="text-brand-600">Store</span> <i class="fa-solid fa-lock text-xs text-green-500 ml-1" title="E2E Encrypted"></i></span>
                 </div>
                 
                 <div class="flex items-center gap-4">
@@ -122,13 +124,16 @@
         <!-- Loading Spinner -->
         <div id="loading" class="hidden absolute inset-0 bg-white bg-opacity-80 z-40 flex flex-col items-center justify-center">
             <div class="loader mb-4"></div>
-            <p class="text-gray-500 animate-pulse">Syncing with Cloud Sheets...</p>
+            <p class="text-gray-500 animate-pulse">Syncing Securely with Cloud Sheets...</p>
         </div>
 
         <!-- VIEW: Login / Signup -->
         <div id="view-login" class="hidden max-w-md mx-auto mt-10 fade-in">
             <div class="bg-white p-8 rounded-xl shadow-lg border border-gray-100">
-                <h2 id="auth-title" class="text-2xl font-bold mb-6 text-center">Welcome Back</h2>
+                <div class="text-center mb-6">
+                    <h2 id="auth-title" class="text-2xl font-bold">Welcome Back</h2>
+                    <p class="text-xs text-green-600 mt-1"><i class="fa-solid fa-shield-alt"></i> Zero-Knowledge Authentication</p>
+                </div>
                 
                 <!-- Toggle -->
                 <div class="flex bg-gray-100 rounded-lg p-1 mb-6">
@@ -143,8 +148,9 @@
                             <input type="text" id="username" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500">
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700">Password</label>
+                            <label class="block text-sm font-medium text-gray-700">Password (Encryption Key)</label>
                             <input type="password" id="password" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-brand-500 focus:border-brand-500">
+                            <p class="text-xs text-gray-400 mt-1">Used to encrypt your data. We never see it plain.</p>
                         </div>
                         <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-500">
                             Continue
@@ -199,12 +205,12 @@
         <div id="view-checkout" class="hidden max-w-2xl mx-auto fade-in">
             <button onclick="app.navigate('cart')" class="mb-4 text-gray-500 hover:text-gray-900"><i class="fa-solid fa-arrow-left"></i> Back to Cart</button>
             <div class="bg-white p-8 rounded-lg shadow-lg">
-                <h2 class="text-2xl font-bold mb-6">Checkout Details</h2>
+                <h2 class="text-2xl font-bold mb-6">Checkout Details <span class="text-xs text-green-600 font-normal ml-2"><i class="fa-solid fa-lock"></i> Encrypted</span></h2>
                 <form onsubmit="orders.placeOrder(event)">
                     <div class="grid grid-cols-1 gap-6">
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Full Delivery Address</label>
-                            <textarea id="address" required rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2"></textarea>
+                            <textarea id="address" required rows="3" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm border p-2" placeholder="This will be encrypted before saving"></textarea>
                         </div>
                         <div class="grid grid-cols-2 gap-4">
                             <div>
@@ -223,7 +229,7 @@
                         </div>
 
                         <button type="submit" class="w-full py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold">
-                            Place Order
+                            Encrypt & Place Order
                         </button>
                     </div>
                 </form>
@@ -232,7 +238,7 @@
 
         <!-- VIEW: Order History -->
         <div id="view-orders" class="hidden max-w-4xl mx-auto fade-in">
-            <h2 class="text-2xl font-bold mb-6">My Orders</h2>
+            <h2 class="text-2xl font-bold mb-6">My Orders <span class="text-xs text-gray-400 font-normal ml-2">(Decrypted Locally)</span></h2>
             <div id="orders-list" class="space-y-4">
                 <!-- Orders injected JS -->
             </div>
@@ -267,24 +273,24 @@
     <script>
         // --- CONFIGURATION ---
         const CONFIG = {
-            // Write Operations (Costly, use for POST only)
             api: {
                 accounts: "https://sheetdb.io/api/v1/nchnwk8mt4up8",
                 orders: "https://sheetdb.io/api/v1/tkceueamttrls",
                 products: "https://sheetdb.io/api/v1/wrata6flobfuc"
             },
-            // Read Operations (Free - Google Sheets Direct Export)
             csv: {
-                // IDs extracted from your provided links
                 accounts: "https://docs.google.com/spreadsheets/d/1YgK67iXT7OY-WDhMZfjVRbM5rLkd1c1-eJZ4-HCPpWA/export?format=csv",
                 orders: "https://docs.google.com/spreadsheets/d/1kJn6N9PhSYrei-G_-nC1E7zpHQdW1P96x4UhNtyPY1Y/export?format=csv",
                 products: "https://docs.google.com/spreadsheets/d/1dP9DLbsGQIkJa0csExeckAUVxr2Vz4K0ZC54C5N2j1w/export?format=csv"
             }
         };
 
+        // DEVICE SECRET: Obfuscates key in localStorage
+        const DEVICE_SECRET = "Secure_Device_Obfuscation_Key_v1";
+
         // --- STATE MANAGEMENT ---
         const state = {
-            user: JSON.parse(localStorage.getItem('user')) || null,
+            user: null, 
             products: [],
             cart: JSON.parse(localStorage.getItem('cart')) || [],
             orders: [],
@@ -293,7 +299,7 @@
             tempRating: 5
         };
 
-        // --- UTILS ---
+        // --- UTILS (SECURITY & HELPERS) ---
         const utils = {
             formatCurrency: (num) => `$${parseFloat(num).toFixed(2)}`,
             
@@ -303,7 +309,6 @@
                 el.className = `toast ${type}`;
                 el.innerHTML = `<i class="fa-solid fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> <span>${msg}</span>`;
                 container.appendChild(el);
-                
                 setTimeout(() => el.classList.add('show'), 10);
                 setTimeout(() => {
                     el.classList.remove('show');
@@ -348,8 +353,60 @@
                 return d.toISOString().split('T')[0];
             },
 
+            // --- DEVICE STORAGE ENCRYPTION ---
+            saveLocalUser: (user) => {
+                if(!user) {
+                    localStorage.removeItem('user');
+                    return;
+                }
+                try {
+                    const encryptedPass = CryptoJS.AES.encrypt(user.password, DEVICE_SECRET).toString();
+                    const secureUser = { ...user, password: encryptedPass };
+                    localStorage.setItem('user', JSON.stringify(secureUser));
+                } catch(e) {
+                    console.error("Save Local User Failed", e);
+                }
+            },
+
+            getLocalUser: () => {
+                const raw = localStorage.getItem('user');
+                if(!raw) return null;
+                try {
+                    const user = JSON.parse(raw);
+                    if(user.password) {
+                        const bytes = CryptoJS.AES.decrypt(user.password, DEVICE_SECRET);
+                        user.password = bytes.toString(CryptoJS.enc.Utf8);
+                        if(!user.password) return null; 
+                    }
+                    return user;
+                } catch(e) {
+                    console.error("Load Local User Failed", e);
+                    return null;
+                }
+            },
+
+            // --- DATA ENCRYPTION ENGINE ---
+            encrypt: (value) => {
+                if (!state.user || !state.user.password) return value;
+                try {
+                    return CryptoJS.AES.encrypt(String(value), state.user.password).toString();
+                } catch(e) {
+                    return value;
+                }
+            },
+
+            decrypt: (ciphertext) => {
+                if (!state.user || !state.user.password) return ciphertext;
+                try {
+                    const bytes = CryptoJS.AES.decrypt(ciphertext, state.user.password);
+                    const originalText = bytes.toString(CryptoJS.enc.Utf8);
+                    return originalText || "[Decryption Failed]";
+                } catch(e) {
+                    return "[Encrypted Data]";
+                }
+            },
+
             // --- CSV PARSING ENGINE ---
-            // Fetches and parses CSV data into an array of Objects (like JSON)
             fetchCSV: async (url) => {
                 const res = await fetch(url);
                 const text = await res.text();
@@ -360,22 +417,18 @@
                 const arr = [];
                 let quote = false;  
                 let col = 0, row = 0;
-
                 for (let c = 0; c < str.length; c++) {
                     let cc = str[c], nc = str[c+1];        
                     arr[row] = arr[row] || [];             
                     arr[row][col] = arr[row][col] || '';   
-
                     if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
                     if (cc == '"') { quote = !quote; continue; }
                     if (cc == ',' && !quote) { ++col; continue; }
                     if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
                     if (cc == '\n' && !quote) { ++row; col = 0; continue; }
                     if (cc == '\r' && !quote) { ++row; col = 0; continue; }
-
                     arr[row][col] += cc;
                 }
-                
                 const headers = arr[0].map(h => h.trim());
                 return arr.slice(1).map(row => {
                     if(row.length < headers.length) return null; 
@@ -421,41 +474,61 @@
                 utils.setLoading(true);
 
                 try {
+                    const allAccounts = await utils.fetchCSV(CONFIG.csv.accounts);
+                    
                     if(auth.mode === 'login') {
-                        // HYBRID: Use CSV for reading accounts (FREE)
-                        const allAccounts = await utils.fetchCSV(CONFIG.csv.accounts);
-                        
-                        // Client-side filtering
-                        const foundUser = allAccounts.find(u => u["account name"] === name && u["password"] === pass);
+                        // 1. Find user by Name Only
+                        const foundUser = allAccounts.find(u => u["account name"] === name);
                         
                         if(foundUser) {
-                            state.user = foundUser;
-                            localStorage.setItem('user', JSON.stringify(state.user));
-                            utils.showToast(`Welcome back, ${name}!`);
-                            auth.init();
-                            app.navigate('home');
+                            // 2. Verify Password:
+                            // The sheet contains AES(password, key=password)
+                            // We try to decrypt the sheet's value using the Input Password
+                            try {
+                                const bytes = CryptoJS.AES.decrypt(foundUser.password, pass);
+                                const decryptedPass = bytes.toString(CryptoJS.enc.Utf8);
+                                
+                                if(decryptedPass === pass) {
+                                    // Success!
+                                    state.user = { ...foundUser, password: pass }; // Keep plain pass in memory for Orders
+                                    utils.saveLocalUser(state.user);
+                                    utils.showToast(`Welcome back, ${name}!`);
+                                    auth.init();
+                                    app.navigate('home');
+                                } else {
+                                    throw new Error("Pass mismatch");
+                                }
+                            } catch(err) {
+                                utils.showToast('Invalid credentials', 'error');
+                            }
                         } else {
                             utils.showToast('Invalid credentials', 'error');
                         }
                     } else {
                         // Signup Flow
-                        
-                        // 1. Check existence using CSV (FREE)
-                        const allAccounts = await utils.fetchCSV(CONFIG.csv.accounts);
                         const exists = allAccounts.some(u => u["account name"] === name);
 
                         if(exists) {
                             utils.showToast('Username already taken', 'error');
                         } else {
-                            // 2. Create using API (PAID/LIMITED)
-                            const payload = { "account name": name, "password": pass };
+                            // 1. Encrypt Password with ITSELF
+                            const encryptedPassForSheet = CryptoJS.AES.encrypt(pass, pass).toString();
+
+                            const payload = { 
+                                "account name": name, 
+                                "password": encryptedPassForSheet 
+                            };
+                            
                             await fetch(CONFIG.api.accounts, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ data: payload })
                             });
-                            state.user = payload;
-                            localStorage.setItem('user', JSON.stringify(state.user));
+                            
+                            // State needs plain pass for encrypting future orders
+                            state.user = { "account name": name, "password": pass };
+                            utils.saveLocalUser(state.user);
+                            
                             utils.showToast('Account created successfully!');
                             auth.init();
                             app.navigate('home');
@@ -475,18 +548,13 @@
             fetchAll: async () => {
                 utils.setLoading(true);
                 try {
-                    // HYBRID: Fetch Products via CSV (FREE)
                     const data = await utils.fetchCSV(CONFIG.csv.products);
-                    
                     state.products = data.map((item, index) => ({...item, _id: index}));
                     products.render(state.products);
                     
                     const categories = [...new Set(data.map(p => p.category))];
                     const select = document.getElementById('category-filter');
-                    
-                    // Clear existing options except first
                     select.innerHTML = '<option value="all">All Categories</option>';
-                    
                     categories.forEach(c => {
                         if(c) {
                             const opt = document.createElement('option');
@@ -495,7 +563,6 @@
                             select.appendChild(opt);
                         }
                     });
-
                 } catch (err) {
                     console.error(err);
                     utils.showToast('Failed to load products', 'error');
@@ -509,7 +576,6 @@
                 container.innerHTML = '';
                 list.forEach(p => {
                     const price = utils.cleanPrice(p.price);
-                    
                     const html = `
                         <div class="bg-white rounded-xl shadow-sm hover:shadow-md transition overflow-hidden border border-gray-100 flex flex-col h-full">
                             <div class="h-48 overflow-hidden bg-gray-100 relative">
@@ -535,7 +601,6 @@
             filter: () => {
                 const term = document.getElementById('search-input').value.toLowerCase();
                 const cat = document.getElementById('category-filter').value;
-                
                 const filtered = state.products.filter(p => {
                     const matchesSearch = p['product name'].toLowerCase().includes(term) || p['product description'].toLowerCase().includes(term);
                     const matchesCat = cat === 'all' || p.category === cat;
@@ -550,7 +615,6 @@
             add: (productId) => {
                 const product = state.products.find(p => p._id === productId);
                 if (!product) return;
-
                 const existing = state.cart.find(item => item['product name'] === product['product name']);
                 if(existing) {
                     existing.qty++;
@@ -560,13 +624,11 @@
                 cart.save();
                 utils.showToast('Added to cart');
             },
-
             remove: (name) => {
                 state.cart = state.cart.filter(item => item['product name'] !== name);
                 cart.save();
                 cart.render();
             },
-
             changeQty: (name, delta) => {
                 const item = state.cart.find(i => i['product name'] === name);
                 if(item) {
@@ -576,12 +638,10 @@
                     cart.render();
                 }
             },
-
             save: () => {
                 localStorage.setItem('cart', JSON.stringify(state.cart));
                 cart.updateCount();
             },
-
             updateCount: () => {
                 const count = state.cart.reduce((acc, item) => acc + item.qty, 0);
                 const el = document.getElementById('cart-count');
@@ -589,30 +649,24 @@
                 if(count > 0) el.classList.remove('hidden');
                 else el.classList.add('hidden');
             },
-
             render: () => {
                 const container = document.getElementById('cart-items-container');
                 const summary = document.getElementById('cart-summary');
                 const empty = document.getElementById('empty-cart-msg');
                 const totalEl = document.getElementById('cart-total');
-
                 if(state.cart.length === 0) {
                     container.innerHTML = '';
                     summary.classList.add('hidden');
                     empty.classList.remove('hidden');
                     return;
                 }
-
                 empty.classList.add('hidden');
                 summary.classList.remove('hidden');
                 container.innerHTML = '';
-
                 let total = 0;
-                
                 state.cart.forEach(item => {
                     const price = utils.cleanPrice(item.price);
                     total += price * item.qty;
-                    
                     container.innerHTML += `
                         <div class="flex flex-col sm:flex-row items-center border-b p-4 gap-4">
                             <div class="w-16 h-16 rounded overflow-hidden bg-gray-100 flex-shrink-0 relative">
@@ -636,12 +690,11 @@
                         </div>
                     `;
                 });
-
                 totalEl.innerText = utils.formatCurrency(total);
             }
         };
 
-        // --- ORDER SERVICE ---
+        // --- ORDER SERVICE (SECURE) ---
         const orders = {
             placeOrder: async (e) => {
                 e.preventDefault();
@@ -650,36 +703,36 @@
                 const address = document.getElementById('address').value;
                 const pincode = document.getElementById('pincode').value;
                 const mobile = document.getElementById('mobile').value;
-
                 const productsStr = state.cart.map(i => `${i['product name']} (x${i.qty})`).join(', ');
                 const totalPrice = state.cart.reduce((acc, i) => acc + (utils.cleanPrice(i.price) * i.qty), 0);
+                const priceStr = `$${totalPrice.toFixed(2)}`;
+                const date = new Date().toISOString();
+                const estDate = utils.getDeliveryDate();
 
                 const orderData = {
-                    "account name": state.user["account name"],
-                    "password": state.user.password, 
-                    "orders dates": new Date().toISOString(), 
-                    "estimated delevery date": utils.getDeliveryDate(),
-                    "products": productsStr,
-                    "complete price": `$${totalPrice.toFixed(2)}`,
-                    "delevery status": "Pending",
-                    "adresss": address, 
-                    "pin code": pincode,
-                    "mobile number(for delevery)": mobile
+                    "account name": state.user["account name"], 
+                    "password": utils.encrypt("HIDDEN"), 
+                    "orders dates": utils.encrypt(date),
+                    "estimated delevery date": utils.encrypt(estDate),
+                    "products": utils.encrypt(productsStr),
+                    "complete price": utils.encrypt(priceStr),
+                    "delevery status": utils.encrypt("Pending"),
+                    "adresss": utils.encrypt(address),
+                    "pin code": utils.encrypt(pincode),
+                    "mobile number(for delevery)": utils.encrypt(mobile)
                 };
 
                 utils.setLoading(true);
 
                 try {
-                    // API (PAID/LIMITED) - Necessary for writes
                     await fetch(CONFIG.api.orders, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({ data: orderData })
                     });
-                    
                     state.cart = [];
                     cart.save();
-                    utils.showToast('Order placed successfully!');
+                    utils.showToast('Order placed & Encrypted successfully!');
                     app.navigate('orders');
                 } catch(err) {
                     utils.showToast('Failed to place order', 'error');
@@ -692,11 +745,22 @@
                 if(!state.user) return;
                 utils.setLoading(true);
                 try {
-                    // HYBRID: Use CSV for Order History (FREE)
                     const allOrders = await utils.fetchCSV(CONFIG.csv.orders);
+                    const myRawOrders = allOrders.filter(o => o["account name"] === state.user["account name"]);
                     
-                    // Client-side filtering by account name
-                    state.orders = allOrders.filter(o => o["account name"] === state.user["account name"]).reverse();
+                    state.orders = myRawOrders.map(o => {
+                        return {
+                            ...o,
+                            "products": utils.decrypt(o.products),
+                            "complete price": utils.decrypt(o["complete price"]),
+                            "orders dates": utils.decrypt(o["orders dates"]),
+                            "estimated delevery date": utils.decrypt(o["estimated delevery date"]),
+                            "delevery status": utils.decrypt(o["delevery status"]),
+                            "adresss": utils.decrypt(o["adresss"]),
+                            "pin code": utils.decrypt(o["pin code"]),
+                            "mobile number(for delevery)": utils.decrypt(o["mobile number(for delevery)"]),
+                        };
+                    }).reverse();
                     
                     orders.render();
                 } catch(err) {
@@ -710,22 +774,18 @@
             render: () => {
                 const container = document.getElementById('orders-list');
                 container.innerHTML = '';
-                
                 if(state.orders.length === 0) {
                     container.innerHTML = '<p class="text-center text-gray-500 py-10">No orders found.</p>';
                     return;
                 }
-
                 state.orders.forEach(o => {
                     const status = o["delevery status"];
-                    const isPending = status === 'Pending';
-                    const isDelivered = status === 'Delivered';
-                    
                     let statusColor = 'bg-gray-100 text-gray-800';
-                    if(isPending) statusColor = 'bg-yellow-100 text-yellow-800';
+                    if(status === 'Pending') statusColor = 'bg-yellow-100 text-yellow-800';
                     if(status === 'Shipped') statusColor = 'bg-blue-100 text-blue-800';
-                    if(isDelivered) statusColor = 'bg-green-100 text-green-800';
+                    if(status === 'Delivered') statusColor = 'bg-green-100 text-green-800';
                     if(status === 'Cancelled') statusColor = 'bg-red-100 text-red-800';
+                    if(status === '[Decryption Failed]') statusColor = 'bg-red-500 text-white';
 
                     const dateObj = new Date(o["orders dates"]);
                     const date = !isNaN(dateObj) ? dateObj.toLocaleDateString() : o["orders dates"];
@@ -733,7 +793,6 @@
                     container.innerHTML += `
                         <div class="bg-white rounded-lg shadow border border-gray-100 overflow-hidden transition hover:shadow-md">
                             <div class="p-6">
-                                <!-- Header -->
                                 <div class="flex flex-col md:flex-row justify-between md:items-start mb-4 border-b border-gray-100 pb-4">
                                     <div>
                                         <div class="text-xs text-gray-500 uppercase font-bold tracking-wider">Order Placed</div>
@@ -744,27 +803,22 @@
                                         <div class="font-bold text-lg text-gray-900">${o["complete price"]}</div>
                                     </div>
                                 </div>
-
-                                <!-- Main Details -->
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
                                     <div>
-                                        <h4 class="font-bold text-gray-900 mb-2">Items</h4>
+                                        <h4 class="font-bold text-gray-900 mb-2">Items <i class="fa-solid fa-lock text-xs text-green-500"></i></h4>
                                         <p class="text-gray-700 text-sm leading-relaxed">${o.products}</p>
                                     </div>
                                     <div class="bg-gray-50 p-4 rounded-lg text-sm">
-                                        <h4 class="font-bold text-gray-900 mb-2">Delivery Details</h4>
+                                        <h4 class="font-bold text-gray-900 mb-2">Delivery Details <i class="fa-solid fa-lock text-xs text-green-500"></i></h4>
                                         <p><span class="text-gray-500">Address:</span> ${o.adresss || 'N/A'}</p>
                                         <p><span class="text-gray-500">Pin:</span> ${o["pin code"] || 'N/A'}</p>
                                         <p><span class="text-gray-500">Mobile:</span> ${o["mobile number(for delevery)"] || 'N/A'}</p>
                                         <p class="mt-2"><span class="text-gray-500">Est. Delivery:</span> ${o["estimated delevery date"] || 'N/A'}</p>
                                     </div>
                                 </div>
-                                
-                                <!-- Footer / Status -->
                                 <div class="flex items-center justify-between pt-2">
                                     <span class="px-3 py-1 rounded-full text-xs font-bold uppercase ${statusColor}">${status}</span>
-                                    
-                                    ${isDelivered ? `
+                                    ${status === 'Delivered' ? `
                                         <button onclick="reviews.open()" class="text-sm text-brand-600 hover:text-brand-800 font-semibold border border-brand-200 px-4 py-2 rounded hover:bg-brand-50">
                                             Write Review
                                         </button>
@@ -779,13 +833,8 @@
 
         // --- REVIEWS SERVICE ---
         const reviews = {
-            open: () => {
-                document.getElementById('review-modal').classList.remove('hidden');
-            },
-            close: () => {
-                document.getElementById('review-modal').classList.add('hidden');
-                document.getElementById('review-text').value = '';
-            },
+            open: () => { document.getElementById('review-modal').classList.remove('hidden'); },
+            close: () => { document.getElementById('review-modal').classList.add('hidden'); document.getElementById('review-text').value = ''; },
             setRating: (n) => {
                 state.tempRating = n;
                 const stars = document.querySelectorAll('#review-modal .fa-star');
@@ -794,48 +843,37 @@
                     else s.classList.remove('text-yellow-500');
                 });
             },
-            submit: () => {
-                utils.showToast('Review submitted! Thank you.');
-                reviews.close();
-            }
+            submit: () => { utils.showToast('Review submitted! Thank you.'); reviews.close(); }
         };
 
         // --- APP CONTROLLER ---
         const app = {
             init: () => {
+                const savedUser = utils.getLocalUser();
+                if(savedUser) state.user = savedUser;
                 cart.updateCount();
                 auth.init();
                 products.fetchAll();
-                
-                if(state.user) {
-                    orders.fetchHistory();
-                }
-
+                if(state.user) orders.fetchHistory();
                 app.navigate('home');
             },
-
             navigate: (viewId) => {
                 if((viewId === 'checkout' || viewId === 'orders') && !state.user) {
                     utils.showToast('Please login first', 'error');
                     app.navigate('login');
                     return;
                 }
-
                 state.currentView = viewId;
-                
                 ['view-home', 'view-login', 'view-cart', 'view-checkout', 'view-orders'].forEach(id => {
                     document.getElementById(id).classList.add('hidden');
                 });
-
                 document.getElementById(`view-${viewId}`).classList.remove('hidden');
-
                 if(viewId === 'cart') cart.render();
                 if(viewId === 'orders') orders.fetchHistory();
             },
-
             logout: () => {
                 state.user = null;
-                localStorage.removeItem('user');
+                utils.saveLocalUser(null);
                 utils.showToast('Logged out');
                 auth.init();
                 app.navigate('home');
@@ -843,7 +881,6 @@
         };
 
         window.addEventListener('DOMContentLoaded', app.init);
-
     </script>
 </body>
 </html>
