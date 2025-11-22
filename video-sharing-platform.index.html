@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureStream - 25-Column Vault</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3b82f6;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Navigation -->
+    <nav class="border-b border-slate-700 bg-slate-900 p-4 sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-shield-halved text-blue-500 text-2xl"></i>
+                <h1 class="text-xl font-bold tracking-wide">SecureStream <span class="text-xs bg-blue-900 text-blue-200 px-2 py-0.5 rounded ml-2">Col-25 Mode</span></h1>
+            </div>
+            <div class="flex gap-2">
+                <button onclick="switchTab('upload')" id="btn-upload" class="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500 transition shadow-lg shadow-blue-500/20">
+                    <i class="fa-solid fa-cloud-arrow-up mr-2"></i>Upload
+                </button>
+                <button onclick="switchTab('watch')" id="btn-watch" class="px-4 py-2 rounded-lg bg-slate-700 text-slate-300 text-sm hover:bg-slate-600 transition">
+                    <i class="fa-solid fa-play mr-2"></i>Watch
+                </button>
+                <button onclick="toggleSettings()" class="px-3 py-2 rounded-lg bg-slate-800 text-slate-400 hover:text-white transition">
+                    <i class="fa-solid fa-cog"></i>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4">
+        <div class="bg-slate-800 p-6 rounded-xl max-w-md w-full border border-slate-600 shadow-2xl">
+            <h3 class="text-lg font-bold mb-4">Configuration</h3>
+            <label class="block text-sm text-slate-400 mb-2">SheetDB API URL</label>
+            <input type="text" id="api-url" class="w-full bg-slate-900 border border-slate-700 rounded p-3 text-sm focus:outline-none focus:border-blue-500 mb-4 text-white">
+            <p class="text-xs text-slate-500 mb-4">
+                <strong>Required Columns:</strong><br>
+                <code>no</code> (Video ID)<br>
+                <code>encrypted 1</code> ... through ... <code>encrypted 25</code>
+            </p>
+            <button onclick="saveSettings()" class="w-full bg-green-600 hover:bg-green-500 text-white py-2 rounded transition">Save Configuration</button>
+        </div>
+    </div>
+
+    <main class="flex-grow p-4 md:p-8 max-w-5xl mx-auto w-full">
+        
+        <!-- Notifications -->
+        <div id="notification-area" class="fixed top-20 right-4 z-50 space-y-2 pointer-events-none"></div>
+
+        <!-- UPLOAD SECTION -->
+        <div id="tab-upload" class="fade-in">
+            <div class="glass-panel rounded-2xl p-8 max-w-2xl mx-auto">
+                <div class="text-center mb-8">
+                    <h2 class="text-3xl font-bold mb-2">Multi-Column Upload</h2>
+                    <p class="text-slate-400">Splits encrypted data across columns "encrypted 1-25"</p>
+                </div>
+
+                <div class="space-y-6">
+                    <div class="relative border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:border-blue-500 transition group cursor-pointer" onclick="document.getElementById('file-input').click()">
+                        <input type="file" id="file-input" accept="video/*" class="hidden" onchange="handleFileSelect(event)">
+                        <div class="text-slate-500 group-hover:text-blue-400 transition">
+                            <i class="fa-solid fa-file-video text-4xl mb-3"></i>
+                            <p id="file-name-display" class="font-medium">Click to select video file</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-slate-400 mb-2">Encryption Password</label>
+                        <div class="relative">
+                            <input type="password" id="upload-password" placeholder="Create a secure password" class="w-full bg-slate-900/50 border border-slate-600 rounded-lg p-3 pl-10 focus:outline-none focus:border-blue-500 transition text-white">
+                            <i class="fa-solid fa-lock absolute left-3 top-3.5 text-slate-500"></i>
+                        </div>
+                    </div>
+
+                    <!-- Progress -->
+                    <div id="upload-progress-container" class="hidden">
+                        <div class="flex justify-between text-xs text-slate-400 mb-1">
+                            <span id="progress-status">Processing...</span>
+                            <span id="progress-percent">0%</span>
+                        </div>
+                        <div class="w-full bg-slate-700 rounded-full h-2.5">
+                            <div id="progress-bar" class="bg-blue-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <button onclick="startUpload()" id="btn-start-upload" class="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-900/20 transition flex justify-center items-center gap-2">
+                        <i class="fa-solid fa-bolt"></i> Encrypt & Upload
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- WATCH SECTION -->
+        <div id="tab-watch" class="hidden fade-in">
+            <div class="grid md:grid-cols-3 gap-6">
+                <div class="md:col-span-1 space-y-6">
+                    <div class="glass-panel p-6 rounded-xl">
+                        <h3 class="font-bold text-lg mb-4 border-b border-slate-700 pb-2">Access Video</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-xs text-slate-400 uppercase tracking-wider font-bold">Video ID (from 'no' col)</label>
+                                <input type="text" id="watch-id" placeholder="e.g., 550e8400..." class="w-full mt-1 bg-slate-900 border border-slate-700 rounded p-2 text-white focus:border-blue-500 outline-none">
+                            </div>
+                            <div>
+                                <label class="text-xs text-slate-400 uppercase tracking-wider font-bold">Decryption Password</label>
+                                <input type="password" id="watch-password" placeholder="Enter password" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded p-2 text-white focus:border-blue-500 outline-none">
+                            </div>
+                            <button onclick="fetchAndPlay()" id="btn-fetch" class="w-full bg-slate-700 hover:bg-slate-600 text-white py-2 rounded transition flex justify-center items-center gap-2">
+                                <i class="fa-solid fa-download"></i> Retrieve
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="md:col-span-2">
+                    <div class="glass-panel p-1 rounded-xl min-h-[300px] flex flex-col items-center justify-center bg-black relative overflow-hidden" id="player-container">
+                        <div id="player-placeholder" class="text-center p-8">
+                            <div class="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <i class="fa-solid fa-film text-3xl text-slate-500"></i>
+                            </div>
+                            <p class="text-slate-500">Player will appear here.</p>
+                        </div>
+                        <div id="player-loader" class="hidden flex-col items-center">
+                            <div class="loader mb-4"></div>
+                            <p id="loader-text" class="text-sm text-blue-400 animate-pulse">Fetching data...</p>
+                        </div>
+                        <video id="main-video" controls class="hidden w-full h-full rounded-lg object-contain max-h-[500px]"></video>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Result Modal -->
+    <div id="result-modal" class="hidden fixed inset-0 bg-black/90 z-[70] flex items-center justify-center p-4">
+        <div class="bg-slate-800 p-8 rounded-xl max-w-lg w-full text-center border border-green-500/30 shadow-2xl shadow-green-900/20">
+            <div class="w-16 h-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                <i class="fa-solid fa-check"></i>
+            </div>
+            <h3 class="text-2xl font-bold text-white mb-2">Upload Complete!</h3>
+            <p class="text-slate-400 mb-6">Video stored in columns successfully.</p>
+            <div class="bg-slate-900 p-4 rounded border border-slate-700 mb-6 text-left">
+                <p class="text-xs text-slate-500 uppercase font-bold mb-1">Video ID (Column 'no')</p>
+                <div class="flex items-center justify-between gap-2">
+                    <code id="result-id" class="text-blue-400 font-mono text-lg truncate">...</code>
+                    <button onclick="copyToClipboard('result-id')" class="text-slate-400 hover:text-white"><i class="fa-regular fa-copy"></i></button>
+                </div>
+            </div>
+            <button onclick="closeResultModal()" class="bg-slate-700 hover:bg-slate-600 text-white px-6 py-2 rounded transition">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        // 45000 chars to be safe under 50k cell limit
+        const CHUNK_SIZE = 45000; 
+        const MAX_COLS = 25;
+        let SHEETDB_API = localStorage.getItem('sheetdb_url') || 'https://sheetdb.io/api/v1/gbjfwde7u4yxb';
+
+        // Initialize
+        document.getElementById('api-url').value = SHEETDB_API;
+
+        function switchTab(tab) {
+            document.getElementById('tab-upload').classList.add('hidden');
+            document.getElementById('tab-watch').classList.add('hidden');
+            document.getElementById('tab-' + tab).classList.remove('hidden');
+            
+            const btnUpload = document.getElementById('btn-upload');
+            const btnWatch = document.getElementById('btn-watch');
+            
+            if(tab === 'upload') {
+                btnUpload.classList.replace('bg-slate-700', 'bg-blue-600');
+                btnUpload.classList.replace('text-slate-300', 'text-white');
+                btnWatch.classList.replace('bg-blue-600', 'bg-slate-700');
+                btnWatch.classList.replace('text-white', 'text-slate-300');
+            } else {
+                btnWatch.classList.replace('bg-slate-700', 'bg-blue-600');
+                btnWatch.classList.replace('text-slate-300', 'text-white');
+                btnUpload.classList.replace('bg-blue-600', 'bg-slate-700');
+                btnUpload.classList.replace('text-white', 'text-slate-300');
+            }
+        }
+
+        function toggleSettings() {
+            document.getElementById('settings-modal').classList.toggle('hidden');
+        }
+
+        function saveSettings() {
+            const url = document.getElementById('api-url').value.trim();
+            if(!url) return showNotification('Please enter a URL', 'error');
+            SHEETDB_API = url;
+            localStorage.setItem('sheetdb_url', url);
+            toggleSettings();
+            showNotification('Saved', 'success');
+        }
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                document.getElementById('file-name-display').innerHTML = `Selected: <span class="text-blue-400">${file.name}</span> (${(file.size/1024/1024).toFixed(2)} MB)`;
+            }
+        }
+
+        // --- UPLOAD LOGIC ---
+        async function startUpload() {
+            if (!SHEETDB_API) return toggleSettings();
+            const fileInput = document.getElementById('file-input');
+            const password = document.getElementById('upload-password').value;
+            
+            if (!fileInput.files.length) return showNotification('Select a file', 'error');
+            if (!password) return showNotification('Password required', 'error');
+
+            const file = fileInput.files[0];
+            const btn = document.getElementById('btn-start-upload');
+            const statusText = document.getElementById('progress-status');
+            const progressBar = document.getElementById('progress-bar');
+
+            btn.disabled = true;
+            document.getElementById('upload-progress-container').classList.remove('hidden');
+            statusText.innerText = "Reading file...";
+
+            try {
+                // 1. Read & Package
+                const base64 = await readFileAsBase64(file);
+                
+                // We wrap mime type inside the data because we ran out of columns
+                const payload = JSON.stringify({
+                    mime: file.type,
+                    data: base64
+                });
+
+                // 2. Encrypt entire payload
+                statusText.innerText = "Encrypting...";
+                await new Promise(r => setTimeout(r, 50));
+                const encryptedFull = CryptoJS.AES.encrypt(payload, password).toString();
+
+                // 3. Split into chunks
+                const totalLength = encryptedFull.length;
+                const totalChunks = Math.ceil(totalLength / CHUNK_SIZE);
+                const chunks = [];
+                for (let i = 0; i < totalChunks; i++) {
+                    chunks.push(encryptedFull.substring(i * CHUNK_SIZE, (i + 1) * CHUNK_SIZE));
+                }
+
+                // 4. Distribute into Rows (25 chunks per row)
+                const videoId = generateUUID();
+                const rowsToUpload = [];
+                
+                // Calculate how many rows we need (since each row holds 25 chunks)
+                // If video is huge, we just make multiple rows with same ID
+                const rowsNeeded = Math.ceil(chunks.length / MAX_COLS);
+
+                for(let r = 0; r < rowsNeeded; r++) {
+                    let rowObj = { "no": videoId }; // Match User's 'no' column
+                    
+                    // Fill columns 'encrypted 1' to 'encrypted 25'
+                    for(let c = 0; c < MAX_COLS; c++) {
+                        const globalChunkIndex = (r * MAX_COLS) + c;
+                        if(globalChunkIndex < chunks.length) {
+                            rowObj[`encrypted ${c + 1}`] = chunks[globalChunkIndex];
+                        } else {
+                            rowObj[`encrypted ${c + 1}`] = ""; // Empty filler
+                        }
+                    }
+                    rowsToUpload.push(rowObj);
+                }
+
+                // 5. Send to SheetDB
+                statusText.innerText = `Uploading ${rowsToUpload.length} row(s)...`;
+                
+                // SheetDB POST
+                await fetch(SHEETDB_API, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: rowsToUpload })
+                });
+
+                progressBar.style.width = '100%';
+                document.getElementById('result-id').innerText = videoId;
+                document.getElementById('result-modal').classList.remove('hidden');
+                
+                // Cleanup
+                fileInput.value = '';
+                document.getElementById('upload-password').value = '';
+
+            } catch (error) {
+                console.error(error);
+                showNotification('Error: ' + error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                document.getElementById('upload-progress-container').classList.add('hidden');
+            }
+        }
+
+        // --- WATCH LOGIC ---
+        async function fetchAndPlay() {
+            const videoId = document.getElementById('watch-id').value.trim();
+            const password = document.getElementById('watch-password').value;
+            if (!videoId || !password) return showNotification('ID and Password required', 'error');
+
+            const loaderText = document.getElementById('loader-text');
+            const playerLoader = document.getElementById('player-loader');
+            const videoEl = document.getElementById('main-video');
+            const btn = document.getElementById('btn-fetch');
+
+            videoEl.classList.add('hidden');
+            playerLoader.classList.remove('hidden');
+            document.getElementById('player-placeholder').classList.add('hidden');
+            btn.disabled = true;
+
+            try {
+                // 1. Search by 'no' column
+                // SheetDB Search: /search?no={id}
+                const response = await fetch(`${SHEETDB_API}/search?no=${videoId}`);
+                const rows = await response.json();
+
+                if (!rows || rows.length === 0) throw new Error('Video ID not found');
+
+                // 2. Reassemble
+                loaderText.innerText = "Reassembling chunks...";
+                
+                // Important: If multiple rows, we must respect order. 
+                // We assume SheetDB returns them in insertion order (FIFO).
+                // To be safer, one could check for content, but usually insertion order holds for simple app.
+                
+                let fullEncryptedString = "";
+
+                rows.forEach(row => {
+                    // Iterate columns 1 to 25
+                    for(let i = 1; i <= MAX_COLS; i++) {
+                        const key = `encrypted ${i}`;
+                        if(row[key]) {
+                            fullEncryptedString += row[key];
+                        }
+                    }
+                });
+
+                // 3. Decrypt
+                loaderText.innerText = "Decrypting...";
+                await new Promise(r => setTimeout(r, 50));
+
+                const decryptedBytes = CryptoJS.AES.decrypt(fullEncryptedString, password);
+                const decryptedUtf8 = decryptedBytes.toString(CryptoJS.enc.Utf8);
+
+                if(!decryptedUtf8) throw new Error('Decryption failed (Wrong Password?)');
+
+                // 4. Parse JSON Wrapper
+                const fileObj = JSON.parse(decryptedUtf8);
+                
+                videoEl.src = fileObj.data; // Base64 Data URI
+                videoEl.classList.remove('hidden');
+                playerLoader.classList.add('hidden');
+                videoEl.play();
+                showNotification('Playing secure video', 'success');
+
+            } catch (e) {
+                console.error(e);
+                showNotification(e.message, 'error');
+                playerLoader.classList.add('hidden');
+                document.getElementById('player-placeholder').classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // --- Utilities ---
+        function readFileAsBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function generateUUID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+
+        function showNotification(msg, type) {
+            const area = document.getElementById('notification-area');
+            const div = document.createElement('div');
+            div.className = `${type === 'error' ? 'bg-red-600' : 'bg-green-600'} text-white px-4 py-3 rounded shadow-lg text-sm fade-in`;
+            div.innerText = msg;
+            area.appendChild(div);
+            setTimeout(() => div.remove(), 4000);
+        }
+
+        function copyToClipboard(id) {
+            const text = document.getElementById(id).innerText;
+            navigator.clipboard.writeText(text).then(() => showNotification('Copied ID', 'success'));
+        }
+
+        function closeResultModal() {
+            document.getElementById('result-modal').classList.add('hidden');
+        }
+
+        // CSS Animation
+        const style = document.createElement('style');
+        style.innerHTML = `.fade-in { animation: fadeIn 0.5s ease-in-out; } @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }`;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
